@@ -1,0 +1,441 @@
+http://www.programcreek.com/java-api-examples/index.php?api=com.netflix.hystrix.contrib.javanica.annotation.HystrixProperty
+
+
+
+
+package com.netflix.hystrix.contrib.javanica.test.common.configuration.command;
+ 
+import com.netflix.hystrix.HystrixCommandProperties; 
+import com.netflix.hystrix.HystrixEventType; 
+import com.netflix.hystrix.HystrixInvokableInfo; 
+import com.netflix.hystrix.HystrixRequestLog; 
+import com.netflix.hystrix.HystrixThreadPool; 
+import com.netflix.hystrix.HystrixThreadPoolProperties; 
+import com.netflix.hystrix.contrib.javanica.annotation.HystrixCommand; 
+import com.netflix.hystrix.contrib.javanica.annotation.HystrixProperty; 
+import com.netflix.hystrix.contrib.javanica.test.common.BasicHystrixTest; 
+import com.netflix.hystrix.contrib.javanica.test.common.domain.User; 
+import org.junit.Before; 
+import org.junit.Test; 
+ 
+import java.lang.reflect.Field; 
+ 
+import static com.netflix.hystrix.contrib.javanica.conf.HystrixPropertiesManager.CIRCUIT_BREAKER_ENABLED; 
+import static com.netflix.hystrix.contrib.javanica.conf.HystrixPropertiesManager.CIRCUIT_BREAKER_ERROR_THRESHOLD_PERCENTAGE; 
+import static com.netflix.hystrix.contrib.javanica.conf.HystrixPropertiesManager.CIRCUIT_BREAKER_FORCE_CLOSED; 
+import static com.netflix.hystrix.contrib.javanica.conf.HystrixPropertiesManager.CIRCUIT_BREAKER_FORCE_OPEN; 
+import static com.netflix.hystrix.contrib.javanica.conf.HystrixPropertiesManager.CIRCUIT_BREAKER_REQUEST_VOLUME_THRESHOLD; 
+import static com.netflix.hystrix.contrib.javanica.conf.HystrixPropertiesManager.CIRCUIT_BREAKER_SLEEP_WINDOW_IN_MILLISECONDS; 
+import static com.netflix.hystrix.contrib.javanica.conf.HystrixPropertiesManager.EXECUTION_ISOLATION_SEMAPHORE_MAX_CONCURRENT_REQUESTS; 
+import static com.netflix.hystrix.contrib.javanica.conf.HystrixPropertiesManager.EXECUTION_ISOLATION_STRATEGY; 
+import static com.netflix.hystrix.contrib.javanica.conf.HystrixPropertiesManager.EXECUTION_ISOLATION_THREAD_INTERRUPT_ON_TIMEOUT; 
+import static com.netflix.hystrix.contrib.javanica.conf.HystrixPropertiesManager.EXECUTION_ISOLATION_THREAD_TIMEOUT_IN_MILLISECONDS; 
+import static com.netflix.hystrix.contrib.javanica.conf.HystrixPropertiesManager.EXECUTION_TIMEOUT_ENABLED; 
+import static com.netflix.hystrix.contrib.javanica.conf.HystrixPropertiesManager.FALLBACK_ENABLED; 
+import static com.netflix.hystrix.contrib.javanica.conf.HystrixPropertiesManager.FALLBACK_ISOLATION_SEMAPHORE_MAX_CONCURRENT_REQUESTS; 
+import static com.netflix.hystrix.contrib.javanica.conf.HystrixPropertiesManager.METRICS_HEALTH_SNAPSHOT_INTERVAL_IN_MILLISECONDS; 
+import static com.netflix.hystrix.contrib.javanica.conf.HystrixPropertiesManager.METRICS_ROLLING_PERCENTILE_BUCKET_SIZE; 
+import static com.netflix.hystrix.contrib.javanica.conf.HystrixPropertiesManager.METRICS_ROLLING_PERCENTILE_ENABLED; 
+import static com.netflix.hystrix.contrib.javanica.conf.HystrixPropertiesManager.METRICS_ROLLING_PERCENTILE_NUM_BUCKETS; 
+import static com.netflix.hystrix.contrib.javanica.conf.HystrixPropertiesManager.METRICS_ROLLING_STATS_TIME_IN_MILLISECONDS; 
+import static com.netflix.hystrix.contrib.javanica.conf.HystrixPropertiesManager.METRICS_ROLLING_PERCENTILE_TIME_IN_MILLISECONDS; 
+import static com.netflix.hystrix.contrib.javanica.conf.HystrixPropertiesManager.METRICS_ROLLING_STATS_NUM_BUCKETS; 
+import static com.netflix.hystrix.contrib.javanica.conf.HystrixPropertiesManager.REQUEST_CACHE_ENABLED; 
+import static com.netflix.hystrix.contrib.javanica.conf.HystrixPropertiesManager.REQUEST_LOG_ENABLED; 
+import static org.junit.Assert.assertEquals; 
+import static org.junit.Assert.assertTrue; 
+ 
+/**
+ * Created by dmgcodevil 
+ */ 
+public abstract class BasicCommandPropertiesTest extends BasicHystrixTest { 
+ 
+    private UserService userService; 
+ 
+    protected abstract UserService createUserService(); 
+ 
+    @Before 
+    public void setUp() throws Exception { 
+        userService = createUserService(); 
+        super.setUp(); 
+    } 
+ 
+    @Test 
+    public void testGetUser() throws NoSuchFieldException, IllegalAccessException { 
+        User u1 = userService.getUser("1", "name: "); 
+        assertEquals("name: 1", u1.getName()); 
+        assertEquals(1, HystrixRequestLog.getCurrentRequest().getAllExecutedCommands().size()); 
+        HystrixInvokableInfo<?> command = HystrixRequestLog.getCurrentRequest() 
+                .getAllExecutedCommands().iterator().next(); 
+        assertEquals("GetUserCommand", command.getCommandKey().name()); 
+        assertEquals("UserGroupKey", command.getCommandGroup().name()); 
+        assertEquals("Test", command.getThreadPoolKey().name()); 
+        assertTrue(command.getExecutionEvents().contains(HystrixEventType.SUCCESS)); 
+        // assert properties 
+        assertEquals(110, command.getProperties().executionTimeoutInMilliseconds().get().intValue()); 
+        assertEquals(false, command.getProperties().executionIsolationThreadInterruptOnTimeout().get()); 
+ 
+        Field field = command.getClass().getSuperclass().getSuperclass().getSuperclass().getDeclaredField("threadPool"); 
+        field.setAccessible(true); 
+        HystrixThreadPool threadPool = (HystrixThreadPool) field.get(command); 
+ 
+        Field field2 = HystrixThreadPool.HystrixThreadPoolDefault.class.getDeclaredField("properties"); 
+        field2.setAccessible(true); 
+        HystrixThreadPoolProperties properties = (HystrixThreadPoolProperties) field2.get(threadPool); 
+ 
+        assertEquals(30, (int) properties.coreSize().get()); 
+        assertEquals(101, (int) properties.maxQueueSize().get()); 
+        assertEquals(2, (int) properties.keepAliveTimeMinutes().get()); 
+        assertEquals(15, (int) properties.queueSizeRejectionThreshold().get()); 
+        assertEquals(1440, (int) properties.metricsRollingStatisticalWindowInMilliseconds().get()); 
+        assertEquals(12, (int) properties.metricsRollingStatisticalWindowBuckets().get()); 
+    } 
+ 
+    @Test 
+    public void testGetUserDefaultPropertiesValues() { 
+        User u1 = userService.getUserDefProperties("1", "name: "); 
+        assertEquals("name: 1", u1.getName()); 
+        assertEquals(1, HystrixRequestLog.getCurrentRequest().getAllExecutedCommands().size()); 
+        HystrixInvokableInfo<?> command = HystrixRequestLog.getCurrentRequest() 
+                .getAllExecutedCommands().iterator().next(); 
+        assertEquals("getUserDefProperties", command.getCommandKey().name()); 
+        assertEquals("UserService", command.getCommandGroup().name()); 
+        assertEquals("UserService", command.getThreadPoolKey().name()); 
+        assertTrue(command.getExecutionEvents().contains(HystrixEventType.SUCCESS)); 
+    } 
+ 
+    @Test 
+    public void testGetUserDefGroupKeyWithSpecificThreadPoolKey() { 
+        User u1 = userService.getUserDefGroupKeyWithSpecificThreadPoolKey("1", "name: "); 
+        assertEquals("name: 1", u1.getName()); 
+        assertEquals(1, HystrixRequestLog.getCurrentRequest().getAllExecutedCommands().size()); 
+        HystrixInvokableInfo<?> command = HystrixRequestLog.getCurrentRequest() 
+                .getAllExecutedCommands().iterator().next(); 
+        assertEquals("getUserDefGroupKeyWithSpecificThreadPoolKey", command.getCommandKey().name()); 
+        assertEquals("UserService", command.getCommandGroup().name()); 
+        assertEquals("CustomThreadPool", command.getThreadPoolKey().name()); 
+        assertTrue(command.getExecutionEvents().contains(HystrixEventType.SUCCESS)); 
+    } 
+ 
+    @Test 
+    public void testHystrixCommandProperties() { 
+        User u1 = userService.getUsingAllCommandProperties("1", "name: "); 
+        assertEquals("name: 1", u1.getName()); 
+        assertEquals(1, HystrixRequestLog.getCurrentRequest().getAllExecutedCommands().size()); 
+        HystrixInvokableInfo<?> command = HystrixRequestLog.getCurrentRequest() 
+                .getAllExecutedCommands().iterator().next(); 
+        assertTrue(command.getExecutionEvents().contains(HystrixEventType.SUCCESS)); 
+        // assert properties 
+        assertEquals(HystrixCommandProperties.ExecutionIsolationStrategy.SEMAPHORE, command.getProperties().executionIsolationStrategy().get()); 
+        assertEquals(500, command.getProperties().executionTimeoutInMilliseconds().get().intValue()); 
+        assertEquals(true, command.getProperties().executionTimeoutEnabled().get().booleanValue()); 
+        assertEquals(false, command.getProperties().executionIsolationThreadInterruptOnTimeout().get().booleanValue()); 
+        assertEquals(10, command.getProperties().executionIsolationSemaphoreMaxConcurrentRequests().get().intValue()); 
+        assertEquals(15, command.getProperties().fallbackIsolationSemaphoreMaxConcurrentRequests().get().intValue()); 
+        assertEquals(false, command.getProperties().fallbackEnabled().get().booleanValue()); 
+        assertEquals(false, command.getProperties().circuitBreakerEnabled().get().booleanValue()); 
+        assertEquals(30, command.getProperties().circuitBreakerRequestVolumeThreshold().get().intValue()); 
+        assertEquals(250, command.getProperties().circuitBreakerSleepWindowInMilliseconds().get().intValue()); 
+        assertEquals(60, command.getProperties().circuitBreakerErrorThresholdPercentage().get().intValue()); 
+        assertEquals(false, command.getProperties().circuitBreakerForceOpen().get().booleanValue()); 
+        assertEquals(true, command.getProperties().circuitBreakerForceClosed().get().booleanValue()); 
+        assertEquals(false, command.getProperties().metricsRollingPercentileEnabled().get().booleanValue()); 
+        assertEquals(400, command.getProperties().metricsRollingPercentileWindowInMilliseconds().get().intValue()); 
+        assertEquals(5, command.getProperties().metricsRollingPercentileWindowBuckets().get().intValue()); 
+        assertEquals(6, command.getProperties().metricsRollingPercentileBucketSize().get().intValue()); 
+        assertEquals(10, command.getProperties().metricsRollingStatisticalWindowBuckets().get().intValue()); 
+        assertEquals(500, command.getProperties().metricsRollingStatisticalWindowInMilliseconds().get().intValue()); 
+        assertEquals(312, command.getProperties().metricsHealthSnapshotIntervalInMilliseconds().get().intValue()); 
+        assertEquals(false, command.getProperties().requestCacheEnabled().get().booleanValue()); 
+        assertEquals(true, command.getProperties().requestLogEnabled().get().booleanValue()); 
+    } 
+ 
+    public static class UserService { 
+ 
+        @HystrixCommand(commandKey = "GetUserCommand", groupKey = "UserGroupKey", threadPoolKey = "Test", 
+                commandProperties = { 
+                        @HystrixProperty(name = "execution.isolation.thread.timeoutInMilliseconds", value = "110"), 
+                        @HystrixProperty(name = "execution.isolation.thread.interruptOnTimeout", value = "false") 
+                }, 
+                threadPoolProperties = { 
+                        @HystrixProperty(name = "coreSize", value = "30"), 
+                        @HystrixProperty(name = "maxQueueSize", value = "101"), 
+                        @HystrixProperty(name = "keepAliveTimeMinutes", value = "2"), 
+                        @HystrixProperty(name = "metrics.rollingStats.numBuckets", value = "12"), 
+                        @HystrixProperty(name = "queueSizeRejectionThreshold", value = "15"), 
+                        @HystrixProperty(name = "metrics.rollingStats.timeInMilliseconds", value = "1440") 
+                }) 
+        public User getUser(String id, String name) { 
+            return new User(id, name + id); // it should be network call 
+        } 
+ 
+        @HystrixCommand 
+        public User getUserDefProperties(String id, String name) { 
+            return new User(id, name + id); // it should be network call 
+        } 
+ 
+        @HystrixCommand(threadPoolKey = "CustomThreadPool") 
+        public User getUserDefGroupKeyWithSpecificThreadPoolKey(String id, String name) { 
+            return new User(id, name + id); // it should be network call 
+        } 
+ 
+        @HystrixCommand( 
+                commandProperties = { 
+                        @HystrixProperty(name = EXECUTION_ISOLATION_STRATEGY, value = "SEMAPHORE"), 
+                        @HystrixProperty(name = EXECUTION_ISOLATION_THREAD_TIMEOUT_IN_MILLISECONDS, value = "500"), 
+                        @HystrixProperty(name = EXECUTION_TIMEOUT_ENABLED, value = "true"), 
+                        @HystrixProperty(name = EXECUTION_ISOLATION_THREAD_INTERRUPT_ON_TIMEOUT, value = "false"), 
+                        @HystrixProperty(name = EXECUTION_ISOLATION_SEMAPHORE_MAX_CONCURRENT_REQUESTS, value = "10"), 
+                        @HystrixProperty(name = FALLBACK_ISOLATION_SEMAPHORE_MAX_CONCURRENT_REQUESTS, value = "15"), 
+                        @HystrixProperty(name = FALLBACK_ENABLED, value = "false"), 
+                        @HystrixProperty(name = CIRCUIT_BREAKER_ENABLED, value = "false"), 
+                        @HystrixProperty(name = CIRCUIT_BREAKER_REQUEST_VOLUME_THRESHOLD, value = "30"), 
+                        @HystrixProperty(name = CIRCUIT_BREAKER_SLEEP_WINDOW_IN_MILLISECONDS, value = "250"), 
+                        @HystrixProperty(name = CIRCUIT_BREAKER_ERROR_THRESHOLD_PERCENTAGE, value = "60"), 
+                        @HystrixProperty(name = CIRCUIT_BREAKER_FORCE_OPEN, value = "false"), 
+                        @HystrixProperty(name = CIRCUIT_BREAKER_FORCE_CLOSED, value = "true"), 
+                        @HystrixProperty(name = METRICS_ROLLING_PERCENTILE_ENABLED, value = "false"), 
+                        @HystrixProperty(name = METRICS_ROLLING_PERCENTILE_TIME_IN_MILLISECONDS, value = "400"), 
+                        @HystrixProperty(name = METRICS_ROLLING_STATS_TIME_IN_MILLISECONDS, value = "500"), 
+                        @HystrixProperty(name = METRICS_ROLLING_STATS_NUM_BUCKETS, value = "10"), 
+                        @HystrixProperty(name = METRICS_ROLLING_PERCENTILE_NUM_BUCKETS, value = "5"), 
+                        @HystrixProperty(name = METRICS_ROLLING_PERCENTILE_BUCKET_SIZE, value = "6"), 
+                        @HystrixProperty(name = METRICS_HEALTH_SNAPSHOT_INTERVAL_IN_MILLISECONDS, value = "312"), 
+                        @HystrixProperty(name = REQUEST_CACHE_ENABLED, value = "false"), 
+                        @HystrixProperty(name = REQUEST_LOG_ENABLED, value = "true") 
+                } 
+        ) 
+        public User getUsingAllCommandProperties(String id, String name) { 
+            return new User(id, name + id); // it should be network call 
+        } 
+ 
+    } 
+}
+
+#########################################################################################
+
+
+
+Example 1
+Project: Hystrix   File: BasicCommandPropertiesTest.java View source code	10 votes	vote down vote up
+@HystrixCommand(commandKey = "GetUserCommand", groupKey = "UserGroupKey", threadPoolKey = "Test",
+        commandProperties = {
+                @HystrixProperty(name = "execution.isolation.thread.timeoutInMilliseconds", value = "110"),
+                @HystrixProperty(name = "execution.isolation.thread.interruptOnTimeout", value = "false")
+        },
+        threadPoolProperties = {
+                @HystrixProperty(name = "coreSize", value = "30"),
+                @HystrixProperty(name = "maxQueueSize", value = "101"),
+                @HystrixProperty(name = "keepAliveTimeMinutes", value = "2"),
+                @HystrixProperty(name = "metrics.rollingStats.numBuckets", value = "12"),
+                @HystrixProperty(name = "queueSizeRejectionThreshold", value = "15"),
+                @HystrixProperty(name = "metrics.rollingStats.timeInMilliseconds", value = "1440")
+        })
+public User getUser(String id, String name) {
+    return new User(id, name + id); // it should be network call
+}
+ 
+Example 2
+Project: gnomes-demo   File: GnomesClient.java View source code	6 votes	vote down vote up
+@HystrixCommand(fallbackMethod = "defaultValue",
+        commandProperties = {
+                @HystrixProperty(name = "execution.isolation.thread.timeoutInMilliseconds", value = "5000"),
+                @HystrixProperty(name = "execution.isolation.strategy", value = "SEMAPHORE")
+        })
+public Observable<Map<String,Double>> gnomesData(){
+
+   return new ObservableResult<Map<String, Double>>() {
+       @Override
+       public Map<String, Double> invoke() {
+           Map<String,Double> response = template.getForObject("http://gnomes-data/data",Map.class, Collections.singletonMap("base",10));
+           Double data = response.get("data");
+           lastValue = data;
+           return Collections.singletonMap("gnomes",data);
+       }
+   };
+
+
+}
+ 
+Example 3
+Project: gnomes-demo   File: ProfitClient.java View source code	6 votes	vote down vote up
+@HystrixCommand(fallbackMethod = "defaultValue",
+        commandProperties = {
+                @HystrixProperty(name = "execution.isolation.thread.timeoutInMilliseconds", value = "5000"),
+                @HystrixProperty(name = "execution.isolation.strategy", value = "SEMAPHORE")
+        })
+public Observable<Map<String,Double>> profitData(){
+    return new ObservableResult<Map<String, Double>>() {
+        @Override
+        public Map<String, Double> invoke() {
+            Map<String,Double> response = template.getForObject("http://gnomes-data/data?base={base}",Map.class, 100);
+            Double data = response.get("data");
+            lastValue = data;
+            return Collections.singletonMap("profit",data);
+        }
+    };
+}
+ 
+Example 4
+Project: microservice   File: CatalogClient.java View source code	6 votes	vote down vote up
+@HystrixCommand(fallbackMethod = "getItemsCache", commandProperties = { @HystrixProperty(name = "circuitBreaker.requestVolumeThreshold", value = "2") })
+public Collection<Item> findAll() {
+	PagedResources<Item> pagedResources = restTemplate.getForObject(
+			catalogURL(), ItemPagedResources.class);
+	this.itemsCache = pagedResources.getContent();
+	return pagedResources.getContent();
+}
+ 
+Example 5
+Project: Hystrix   File: BasicCollapserPropertiesTest.java View source code	6 votes	vote down vote up
+@HystrixCollapser(
+        batchMethod = "getUsers",
+        collapserKey = "GetUserCollapser", collapserProperties = {
+        @HystrixProperty(name = TIMER_DELAY_IN_MILLISECONDS, value = "200"),
+        @HystrixProperty(name = MAX_REQUESTS_IN_BATCH, value = "1"),
+})
+public User getUser(String id) {
+    return null;
+}
+ 
+Example 6
+Project: Hystrix   File: BasicCommandPropertiesTest.java View source code	6 votes	vote down vote up
+@HystrixCommand(
+        commandProperties = {
+                @HystrixProperty(name = EXECUTION_ISOLATION_STRATEGY, value = "SEMAPHORE"),
+                @HystrixProperty(name = EXECUTION_ISOLATION_THREAD_TIMEOUT_IN_MILLISECONDS, value = "500"),
+                @HystrixProperty(name = EXECUTION_TIMEOUT_ENABLED, value = "true"),
+                @HystrixProperty(name = EXECUTION_ISOLATION_THREAD_INTERRUPT_ON_TIMEOUT, value = "false"),
+                @HystrixProperty(name = EXECUTION_ISOLATION_SEMAPHORE_MAX_CONCURRENT_REQUESTS, value = "10"),
+                @HystrixProperty(name = FALLBACK_ISOLATION_SEMAPHORE_MAX_CONCURRENT_REQUESTS, value = "15"),
+                @HystrixProperty(name = FALLBACK_ENABLED, value = "false"),
+                @HystrixProperty(name = CIRCUIT_BREAKER_ENABLED, value = "false"),
+                @HystrixProperty(name = CIRCUIT_BREAKER_REQUEST_VOLUME_THRESHOLD, value = "30"),
+                @HystrixProperty(name = CIRCUIT_BREAKER_SLEEP_WINDOW_IN_MILLISECONDS, value = "250"),
+                @HystrixProperty(name = CIRCUIT_BREAKER_ERROR_THRESHOLD_PERCENTAGE, value = "60"),
+                @HystrixProperty(name = CIRCUIT_BREAKER_FORCE_OPEN, value = "false"),
+                @HystrixProperty(name = CIRCUIT_BREAKER_FORCE_CLOSED, value = "true"),
+                @HystrixProperty(name = METRICS_ROLLING_PERCENTILE_ENABLED, value = "false"),
+                @HystrixProperty(name = METRICS_ROLLING_PERCENTILE_TIME_IN_MILLISECONDS, value = "400"),
+                @HystrixProperty(name = METRICS_ROLLING_STATS_TIME_IN_MILLISECONDS, value = "500"),
+                @HystrixProperty(name = METRICS_ROLLING_STATS_NUM_BUCKETS, value = "10"),
+                @HystrixProperty(name = METRICS_ROLLING_PERCENTILE_NUM_BUCKETS, value = "5"),
+                @HystrixProperty(name = METRICS_ROLLING_PERCENTILE_BUCKET_SIZE, value = "6"),
+                @HystrixProperty(name = METRICS_HEALTH_SNAPSHOT_INTERVAL_IN_MILLISECONDS, value = "312"),
+                @HystrixProperty(name = REQUEST_CACHE_ENABLED, value = "false"),
+                @HystrixProperty(name = REQUEST_LOG_ENABLED, value = "true")
+        }
+)
+public User getUsingAllCommandProperties(String id, String name) {
+    return new User(id, name + id); // it should be network call
+}
+ 
+Example 7
+Project: Hystrix   File: BasicCommandFallbackTest.java View source code	6 votes	vote down vote up
+@HystrixCommand(fallbackMethod = "asyncFallbackCommand", commandProperties = {
+        @HystrixProperty(name = "execution.isolation.thread.timeoutInMilliseconds", value = "100000")
+})
+public Future<User> asyncCommandWithAsyncFallbackCommand(final String id, final String name) {
+    return new AsyncResult<User>() {
+        @Override
+        public User invoke() {
+            validate(id, name);
+            return new User(id, name + id); // it should be network call
+        }
+    };
+}
+ 
+Example 8
+Project: Hystrix   File: BasicCommandFallbackTest.java View source code	6 votes	vote down vote up
+@HystrixCommand(fallbackMethod = "asyncFallback", commandProperties = {
+        @HystrixProperty(name = "execution.isolation.thread.timeoutInMilliseconds", value = "100000")
+})
+public Future<User> asyncCommandWithAsyncFallback(final String id, final String name) {
+    return new AsyncResult<User>() {
+        @Override
+        public User invoke() {
+            validate(id, name);
+            return new User(id, name + id); // it should be network call
+        }
+    };
+}
+ 
+Example 9
+Project: Hystrix   File: BasicCollapserTest.java View source code	6 votes	vote down vote up
+@HystrixCommand(
+        fallbackMethod = "getUserByIdsFallbackWithThrowableParam1",
+        commandProperties = {
+        @HystrixProperty(name = "execution.isolation.thread.timeoutInMilliseconds", value = "10000")// for debug
+})
+public List<User> getUserByIdsThrowsException(List<String> ids) {
+    throw new RuntimeException("getUserByIdsFails failed");
+}
+ 
+Example 10
+Project: Hystrix   File: BasicCollapserTest.java View source code	6 votes	vote down vote up
+@HystrixCommand(commandProperties = {
+        @HystrixProperty(name = "execution.isolation.thread.timeoutInMilliseconds", value = "10000")// for debug
+})
+public List<User> getUserByIds(List<String> ids) {
+    List<User> users = new ArrayList<User>();
+    for (String id : ids) {
+        users.add(new User(id, "name: " + id));
+    }
+    return users;
+}
+ 
+Example 11
+Project: Hystrix   File: BasicCollapserTest.java View source code	6 votes	vote down vote up
+@HystrixCommand(fallbackMethod = "getUserByIdsFallback",
+        commandProperties = {
+                @HystrixProperty(name = "execution.isolation.thread.timeoutInMilliseconds", value = "10000")// for debug
+        })
+
+public List<User> getUserByIdsWithFallback(List<String> ids) {
+    throw new RuntimeException("not found");
+}
+ 
+Example 12
+Project: Hystrix   File: HystrixPropertiesManager.java View source code	6 votes	vote down vote up
+private static <S> S initializeProperties(S setter, HystrixProperty[] properties, Map<String, PropSetter<S, String>> propMap, String type) {
+    if (properties != null && properties.length > 0) {
+        for (HystrixProperty property : properties) {
+            validate(property);
+            if (!propMap.containsKey(property.name())) {
+                throw new IllegalArgumentException("unknown " + type + " property: " + property.name());
+            }
+
+            propMap.get(property.name()).set(setter, property.value());
+        }
+    }
+    return setter;
+}
+ 
+Example 13
+Project: Hystrix   File: AbstractHystrixCommandFactory.java View source code	6 votes	vote down vote up
+private Map<String, Object> getCommandProperties(HystrixCommand hystrixCommand) {
+    if (hystrixCommand.commandProperties() == null || hystrixCommand.commandProperties().length == 0) {
+        return Collections.emptyMap();
+    }
+    Map<String, Object> commandProperties = Maps.newHashMap();
+    for (HystrixProperty commandProperty : hystrixCommand.commandProperties()) {
+        commandProperties.put(commandProperty.name(), commandProperty.value());
+    }
+    return commandProperties;
+}
+ 
+Example 14
+Project: sample-recommendations   File: Recommendations.java View source code	6 votes	vote down vote up
+@RequestMapping("/{user}")
+@HystrixCommand(fallbackMethod = "recommendationFallback",
+        ignoreExceptions = UserNotFoundException.class,
+        commandProperties={
+            @HystrixProperty(name = "execution.isolation.thread.timeoutInMilliseconds", value = "5000"),
+            @HystrixProperty(name = "execution.isolation.strategy", value = "SEMAPHORE")
+        })
+public Set<Movie> findRecommendationsForUser(@PathVariable String user) throws UserNotFoundException {
+    RequestContextHolder.currentRequestAttributes();
+    Member member = membershipRepository.findMember(user);
+    if(member == null)
+        throw new UserNotFoundException();
+    return member.age < 17 ? kidRecommendations : adultRecommendations;
